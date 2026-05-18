@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 import kaggle
@@ -69,9 +70,18 @@ class MushroomDataModule(pl.LightningDataModule):
             self.data_dir.mkdir(parents=True, exist_ok=True)
             kaggle.api.authenticate()
             kaggle.api.dataset_download_files(
-                KAGGLE_DATASET, path=self.data_dir, unzip=True
+                KAGGLE_DATASET, path=self.data_dir, unzip=False
             )
-            print("Download complete.")
+            zip_path = self.data_dir / "mushroom1.zip"
+            print(f"Unzipping {zip_path} — this may take several minutes...")
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                members = zf.namelist()
+                for i, member in enumerate(members, 1):
+                    zf.extract(member, self.data_dir)
+                    if i % 10000 == 0:
+                        print(f"  {i}/{len(members)} files extracted...")
+            zip_path.unlink()
+            print("Download and extraction complete.")
 
     def setup(self, stage: str | None = None):
         if stage in ("fit", None):
@@ -100,6 +110,7 @@ class MushroomDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -108,6 +119,7 @@ class MushroomDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -116,4 +128,5 @@ class MushroomDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )

@@ -21,6 +21,7 @@ class FlowMatching(pl.LightningModule):
         depth: int = 6,
         num_heads: int = 8,
         lr: float = 1e-4,
+        sample_every_n_steps: int = 500,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -61,23 +62,27 @@ class FlowMatching(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         loss = self._flow_loss(batch)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        if self.global_step % self.hparams.sample_every_n_steps == 0:
+            self._log_images()
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self._flow_loss(batch)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
 
-    def on_validation_epoch_end(self):
+    def _log_images(self):
         images = self.sample(NUM_SAMPLE_IMAGES)
-        # denormalize from [-1, 1] to [0, 1] and clamp
         images = (images * 0.5 + 0.5).clamp(0, 1)
         grid = [
             wandb.Image(img.permute(1, 2, 0).cpu().float().numpy())
             for img in images
         ]
         self.logger.experiment.log(
-            {"generated_images": grid, "epoch": self.current_epoch}
+            {"generated_images": grid, "global_step": self.global_step}
         )
+
+    def on_validation_epoch_end(self):
+        self._log_images()
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)

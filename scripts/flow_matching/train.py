@@ -1,7 +1,10 @@
 import argparse
 from pathlib import Path
 
+import torch
 import pytorch_lightning as pl
+
+torch.set_float32_matmul_precision("high")
 from pytorch_lightning.loggers import WandbLogger
 
 from world.data import MushroomDataModule
@@ -27,6 +30,7 @@ def parse_args():
 
     # training
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--sample_every_n_steps", type=int, default=500)
     parser.add_argument("--max_epochs", type=int, default=100)
     parser.add_argument("--precision", type=str, default="16-mixed")
     parser.add_argument("--accelerator", type=str, default="auto")
@@ -56,6 +60,7 @@ if __name__ == "__main__":
         depth=args.depth,
         num_heads=args.num_heads,
         lr=args.lr,
+        sample_every_n_steps=args.sample_every_n_steps,
     )
 
     logger = WandbLogger(project=args.wandb_project, log_model=True)
