@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--embed_dim", type=int, default=512)
     parser.add_argument("--depth", type=int, default=6)
     parser.add_argument("--num_heads", type=int, default=8)
+    parser.add_argument("--use_vae", action="store_true")
 
     # training
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -67,6 +68,7 @@ if __name__ == "__main__":
         warmup_steps=args.warmup_steps,
         ema_decay=args.ema_decay,
         sample_every_n_steps=args.sample_every_n_steps,
+        use_vae=args.use_vae,
     )
 
     logger = WandbLogger(project=args.wandb_project, log_model=True)

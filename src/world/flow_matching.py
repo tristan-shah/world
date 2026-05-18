@@ -4,12 +4,14 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import wandb
+from diffusers import AutoencoderKL
 from torch_ema import ExponentialMovingAverage
 
 from world.dit import DiT
 
 NUM_SAMPLE_IMAGES = 8
 EULER_STEPS = 50
+VAE_SCALE = 0.18215  # standard SD VAE latent scaling factor
 
 
 class FlowMatching(pl.LightningModule):
@@ -25,13 +27,24 @@ class FlowMatching(pl.LightningModule):
         warmup_steps: int = 1000,
         ema_decay: float = 0.9999,
         sample_every_n_steps: int = 500,
+        use_vae: bool = False,
     ):
         super().__init__()
         self.save_hyperparameters()
+
+        if use_vae:
+            self.vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
+            self.vae.requires_grad_(False)
+            dit_channels = 4
+            dit_img_size = img_size // 8  # VAE compresses 8x spatially
+        else:
+            dit_channels = in_channels
+            dit_img_size = img_size
+
         self.model = DiT(
-            img_size=img_size,
+            img_size=dit_img_size,
             patch_size=patch_size,
-            in_channels=in_channels,
+            in_channels=dit_channels,
             embed_dim=embed_dim,
             depth=depth,
             num_heads=num_heads,
@@ -48,19 +61,37 @@ class FlowMatching(pl.LightningModule):
         return self.model(x, t)
 
     @torch.no_grad()
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.vae.encode(x).latent_dist.sample() * VAE_SCALE
+
+    @torch.no_grad()
+    def _decode(self, z: torch.Tensor) -> torch.Tensor:
+        return self.vae.decode(z / VAE_SCALE).sample
+
+    @torch.no_grad()
     def sample(self, n: int, steps: int = EULER_STEPS) -> torch.Tensor:
         """Euler integration from x0 ~ N(0, I) to x1 ~ data using EMA weights."""
         h = self.hparams
-        x = torch.randn(n, h.in_channels, h.img_size, h.img_size, device=self.device)
+        if h.use_vae:
+            latent_size = h.img_size // 8
+            x = torch.randn(n, 4, latent_size, latent_size, device=self.device)
+        else:
+            x = torch.randn(n, h.in_channels, h.img_size, h.img_size, device=self.device)
+
         dt = 1.0 / steps
         with self.ema.average_parameters():
             for i in range(steps):
                 t = torch.full((n,), i * dt, device=self.device)
                 x = x + self.model(x, t) * dt
+
+        if h.use_vae:
+            x = self._decode(x)
         return x
 
     def _flow_loss(self, batch) -> torch.Tensor:
         x1, _ = batch
+        if self.hparams.use_vae:
+            x1 = self._encode(x1)
         B = x1.shape[0]
         x0 = torch.randn_like(x1)
         t = torch.rand(B, device=self.device)
