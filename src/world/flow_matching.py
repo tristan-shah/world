@@ -38,6 +38,9 @@ class FlowMatching(pl.LightningModule):
         )
         self.ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)
 
+    def on_fit_start(self):
+        self.ema.to(self.device)
+
     def on_train_batch_end(self, outputs, batch, batch_idx):
         self.ema.update()
 
