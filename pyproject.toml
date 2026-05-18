@@ -24,7 +24,17 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = []
+dependencies = [
+  "torch>=2.0",
+  "torchvision>=0.15",
+  "pytorch-lightning>=2.0",
+  "pandas>=1.5",
+  "Pillow>=9.0",
+  "matplotlib>=3.7",
+  "diffusers>=0.27",
+  "wandb>=0.17",
+  "kaggle>=1.6",
+]
 
 [project.urls]
 Documentation = "https://github.com/Tristan Shah/world#readme"
