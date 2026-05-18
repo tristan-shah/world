@@ -12,24 +12,20 @@ from torchvision import transforms
 
 KAGGLE_DATASET = "zlatan599/mushroom1"
 
-_DEFAULT_TRANSFORMS = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-])
-
-_TRAIN_TRANSFORMS = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,)),
-])
+def make_transforms(img_size: int) -> transforms.Compose:
+    return transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
 
 
 class MushroomDataset(Dataset):
     """Mushroom image classification dataset."""
 
-    def __init__(self, csv_path: str | Path, data_root: str | Path, transform=None):
+    def __init__(self, csv_path: str | Path, data_root: str | Path, transform=None, img_size: int = 64):
         self.data_root = Path(data_root)
-        self.transform = transform if transform is not None else _DEFAULT_TRANSFORMS
+        self.transform = transform if transform is not None else make_transforms(img_size)
         df = pd.read_csv(csv_path)
         # CSV paths use the Kaggle prefix; strip it to get the relative image path.
         df["local_path"] = df["image_path"].str.replace(
@@ -57,11 +53,13 @@ class MushroomDataModule(pl.LightningDataModule):
         data_dir: str | Path = "data/mushroom",
         batch_size: int = 32,
         num_workers: int = 4,
+        img_size: int = 64,
     ):
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.img_size = img_size
         self.num_classes: int | None = None
 
     def prepare_data(self):
@@ -88,17 +86,19 @@ class MushroomDataModule(pl.LightningDataModule):
             self.train = MushroomDataset(
                 self.data_dir / "train.csv",
                 self.data_dir,
-                transform=_TRAIN_TRANSFORMS,
+                img_size=self.img_size,
             )
             self.val = MushroomDataset(
                 self.data_dir / "val.csv",
                 self.data_dir,
+                img_size=self.img_size,
             )
             self.num_classes = len(self.train.classes)
         if stage in ("test", None):
             self.test = MushroomDataset(
                 self.data_dir / "test.csv",
                 self.data_dir,
+                img_size=self.img_size,
             )
             if self.num_classes is None:
                 self.num_classes = len(self.test.classes)
