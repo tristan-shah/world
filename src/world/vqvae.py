@@ -183,20 +183,18 @@ class VQVAE(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         metrics = self._step(batch)
-        self.log_dict(
-            {"train/" + k: v for k, v in metrics.items()},
-            on_step=True, on_epoch=True, prog_bar=True,
-        )
+        self.log("train_loss", metrics["loss"], on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_recon_loss", metrics["recon_loss"], on_step=True, on_epoch=True)
+        self.log("train_vq_loss", metrics["vq_loss"], on_step=True, on_epoch=True)
         if self.global_step > 0 and self.global_step % self.hparams.log_images_every_n_steps == 0:
             self._log_images(batch)
         return metrics["loss"]
 
     def validation_step(self, batch, batch_idx):
         metrics = self._step(batch)
-        self.log_dict(
-            {"val/" + k: v for k, v in metrics.items()},
-            on_epoch=True, prog_bar=True,
-        )
+        self.log("val_loss", metrics["loss"], on_epoch=True, prog_bar=True)
+        self.log("val_recon_loss", metrics["recon_loss"], on_epoch=True)
+        self.log("val_vq_loss", metrics["vq_loss"], on_epoch=True)
 
     def on_validation_epoch_end(self):
         # log a fixed reconstruction at end of each val epoch
