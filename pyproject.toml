@@ -35,6 +35,7 @@ dependencies = [
   "wandb>=0.17",
   "kaggle>=1.6",
   "torch-ema>=0.3",
+  "accelerate"
 ]
 
 [project.urls]
