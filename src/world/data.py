@@ -4,13 +4,16 @@ import zipfile
 from pathlib import Path
 
 import kaggle
+import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 KAGGLE_DATASET = "zlatan599/mushroom1"
+
 
 def make_transforms(img_size: int) -> transforms.Compose:
     return transforms.Compose([
@@ -45,6 +48,27 @@ class MushroomDataset(Dataset):
         return self.transform(img), self.labels[idx]
 
 
+class MushroomLatentDataset(Dataset):
+    """Loads pre-encoded VAE latents from disk."""
+
+    def __init__(self, data_dir: Path, split: str, img_size: int):
+        latent_size = img_size // 8
+        csv_path = data_dir / f"{split}.csv"
+        N = len(pd.read_csv(csv_path))
+        self.latents = np.memmap(
+            data_dir / f"{split}_latents.npy",
+            dtype=np.float16, mode="r",
+            shape=(N, 4, latent_size, latent_size),
+        )
+        self.labels = np.load(data_dir / f"{split}_labels.npy")
+
+    def __len__(self) -> int:
+        return len(self.labels)
+
+    def __getitem__(self, idx: int):
+        return torch.from_numpy(self.latents[idx].astype(np.float32)), int(self.labels[idx])
+
+
 class MushroomDataModule(pl.LightningDataModule):
     """PyTorch Lightning DataModule for the mushroom dataset."""
 
@@ -54,13 +78,24 @@ class MushroomDataModule(pl.LightningDataModule):
         batch_size: int = 32,
         num_workers: int = 4,
         img_size: int = 64,
+        use_vae: bool = False,
     ):
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.img_size = img_size
+        self.use_vae = use_vae
         self.num_classes: int | None = None
+
+    @property
+    def latents_precomputed(self) -> bool:
+        return self.use_vae and (self.data_dir / "train_latents.npy").exists()
+
+    def _make_dataset(self, split: str) -> Dataset:
+        if self.latents_precomputed:
+            return MushroomLatentDataset(self.data_dir, split, self.img_size)
+        return MushroomDataset(self.data_dir / f"{split}.csv", self.data_dir, img_size=self.img_size)
 
     def prepare_data(self):
         if not (self.data_dir / "train.csv").exists():
@@ -82,51 +117,31 @@ class MushroomDataModule(pl.LightningDataModule):
             print("Download and extraction complete.")
 
     def setup(self, stage: str | None = None):
+        if self.latents_precomputed:
+            print("Using precomputed VAE latents.")
         if stage in ("fit", None):
-            self.train = MushroomDataset(
-                self.data_dir / "train.csv",
-                self.data_dir,
-                img_size=self.img_size,
-            )
-            self.val = MushroomDataset(
-                self.data_dir / "val.csv",
-                self.data_dir,
-                img_size=self.img_size,
-            )
-            self.num_classes = len(self.train.classes)
+            self.train = self._make_dataset("train")
+            self.val = self._make_dataset("val")
+            if hasattr(self.train, "classes"):
+                self.num_classes = len(self.train.classes)
         if stage in ("test", None):
-            self.test = MushroomDataset(
-                self.data_dir / "test.csv",
-                self.data_dir,
-                img_size=self.img_size,
-            )
-            if self.num_classes is None:
-                self.num_classes = len(self.test.classes)
+            self.test = self._make_dataset("test")
+
+    def _dataloader(self, dataset: Dataset, shuffle: bool = False) -> DataLoader:
+        return DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.num_workers > 0,
+        )
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.train,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=True,
-            persistent_workers=self.num_workers > 0,
-        )
+        return self._dataloader(self.train, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.val,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            pin_memory=True,
-            persistent_workers=self.num_workers > 0,
-        )
+        return self._dataloader(self.val)
 
     def test_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.test,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            pin_memory=True,
-            persistent_workers=self.num_workers > 0,
-        )
+        return self._dataloader(self.test)

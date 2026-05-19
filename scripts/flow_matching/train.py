@@ -55,6 +55,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         img_size=args.img_size,
+        use_vae=args.use_vae,
     )
 
     model = FlowMatching(

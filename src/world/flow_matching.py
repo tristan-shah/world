@@ -53,6 +53,7 @@ class FlowMatching(pl.LightningModule):
 
     def on_fit_start(self):
         self.ema.to(self.device)
+        self._latents_precomputed = self.trainer.datamodule.latents_precomputed
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
         self.ema.update()
@@ -90,7 +91,7 @@ class FlowMatching(pl.LightningModule):
 
     def _flow_loss(self, batch) -> torch.Tensor:
         x1, _ = batch
-        if self.hparams.use_vae:
+        if self.hparams.use_vae and not getattr(self, "_latents_precomputed", False):
             x1 = self._encode(x1)
         B = x1.shape[0]
         x0 = torch.randn_like(x1)
