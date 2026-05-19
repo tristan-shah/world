@@ -1,4 +1,5 @@
 data/*
+.claude/
 .DS_Store
 *.err
 *.out
