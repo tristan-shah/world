@@ -187,7 +187,7 @@ class VQVAE(pl.LightningModule):
             {"train/" + k: v for k, v in metrics.items()},
             on_step=True, on_epoch=True, prog_bar=True,
         )
-        if self.global_step % self.hparams.log_images_every_n_steps == 0:
+        if self.global_step > 0 and self.global_step % self.hparams.log_images_every_n_steps == 0:
             self._log_images(batch)
         return metrics["loss"]
 
